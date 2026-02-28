@@ -7,7 +7,7 @@
   <vendor_url>https://example.local/nvidia-tray</vendor_url>
   <icon_name>video-display</icon_name>
 
-  <action id="com.github.anlorsp.nvidia-tray.eject">
+  <action id="io.github.anlorsp.nvidia-tray.eject">
     <description>Eject NVIDIA GPU from PCI bus</description>
     <message>Authentication is required to eject an NVIDIA GPU.</message>
     <defaults>
