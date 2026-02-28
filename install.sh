@@ -3,14 +3,15 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-install -Dm755 "$ROOT_DIR/nvidia_eject_helper.py" /usr/local/libexec/nvidia-eject-helper
+install -Dm755 "$ROOT_DIR/nvidia_eject_helper.py" /usr/lib/nvidia-tray/nvidia-eject-helper
 install -Dm644 "$ROOT_DIR/io.github.anlorsp.nvidia-tray.policy" /usr/share/polkit-1/actions/io.github.anlorsp.nvidia-tray.policy
-install -Dm755 "$ROOT_DIR/nvidia_tray.py" /usr/local/bin/nvidia-tray
+install -Dm755 "$ROOT_DIR/nvidia_tray.py" /usr/lib/nvidia-tray/nvidia-tray
+ln -sf /usr/lib/nvidia-tray/nvidia-tray /usr/bin/nvidia-tray
 install -Dm644 "$ROOT_DIR/nvidia-tray.service" /usr/lib/systemd/user/nvidia-tray.service
 
 echo "Installed:"
-echo "  /usr/local/bin/nvidia-tray"
-echo "  /usr/local/libexec/nvidia-eject-helper"
+echo "  /usr/bin/nvidia-tray -> /usr/lib/nvidia-tray/nvidia-tray"
+echo "  /usr/lib/nvidia-tray/nvidia-eject-helper"
 echo "  /usr/share/polkit-1/actions/io.github.anlorsp.nvidia-tray.policy"
 echo "  /usr/lib/systemd/user/nvidia-tray.service"
 echo ""

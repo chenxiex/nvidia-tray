@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 import os
+import shutil
 import subprocess
 import threading
-from typing import List
+from typing import List, Optional
 
 import gi
 import pyudev
@@ -114,10 +115,37 @@ class NvidiaTrayApp:
     def _on_eject_clicked(self, _menu_item: Gtk.MenuItem, pci_id: str) -> None:
         threading.Thread(target=self._run_eject, args=(pci_id,), daemon=True).start()
 
-    def _run_eject(self, pci_id: str) -> None:
-        installed_helper = "/usr/local/libexec/nvidia-eject-helper"
+    def _find_helper(self) -> Optional[str]:
+        """查找 nvidia-eject-helper 程序"""
+        # 1. 在 PATH 中查找
+        helper = shutil.which("nvidia-eject-helper")
+        if helper:
+            return helper
+        
+        # 2. 检查常见安装位置
+        common_paths = [
+            "/usr/lib/nvidia-tray/nvidia-eject-helper",
+            "/usr/local/lib/nvidia-tray/nvidia-eject-helper",
+            "/usr/libexec/nvidia-eject-helper",
+            "/usr/local/libexec/nvidia-eject-helper",
+        ]
+        for path in common_paths:
+            if os.path.isfile(path) and os.access(path, os.X_OK):
+                return path
+        
+        # 3. 回退到脚本同目录的开发版本
         local_helper = os.path.join(os.path.dirname(os.path.abspath(__file__)), "nvidia_eject_helper.py")
-        helper_path = installed_helper if os.path.exists(installed_helper) else local_helper
+        if os.path.isfile(local_helper):
+            return local_helper
+        
+        return None
+
+    def _run_eject(self, pci_id: str) -> None:
+        helper_path = self._find_helper()
+        if not helper_path:
+            GLib.idle_add(self._show_error_dialog, "错误: 找不到 nvidia-eject-helper 程序")
+            return
+        
         cmd = ["pkexec", helper_path, pci_id]
         completed = subprocess.run(cmd, capture_output=True, text=True)
         if completed.returncode != 0:

@@ -8,3 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Arch Linux package build files
+*.pkg.tar.zst
+nvidia-tray-git
