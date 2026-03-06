@@ -57,8 +57,9 @@ systemctl --user disable --now nvidia-tray.service
 
 - helper 只允许处理格式正确的 PCI ID，并校验设备厂商必须是 NVIDIA。
 - **弹出前会检查是否有进程正在使用 GPU**：
-  - 优先使用 `nvidia-smi` 检测计算进程
-  - 回退使用 `fuser` 检测打开 `/dev/nvidia*` 设备的进程
+  - 使用 `fuser` 检测打开 `/dev/nvidia*` 设备的进程
   - 如检测到进程占用，将拒绝弹出并显示进程名称和 PID
-- helper 会在驱动绑定存在时写入 `unbind`，随后写入 `remove`。
+- **弹出流程**：
+  - 直接写入 PCI 设备的 `remove` 接口移除设备
+  - 尝试卸载 NVIDIA 内核模块（nvidia_uvm, nvidia_drm, nvidia_modeset, nvidia）
 - 默认 polkit 策略为管理员认证（活跃会话可缓存认证）。

@@ -43,79 +43,74 @@ def ensure_nvidia_device(pci_id: str) -> None:
 
 
 def check_nvidia_processes() -> List[Tuple[int, str]]:
-    """Check for processes using NVIDIA GPU. Returns list of (pid, process_name) tuples."""
+    """Check for processes using NVIDIA GPU with fuser. Returns list of (pid, process_name) tuples."""
     processes = []
     
-    # Try nvidia-smi first (most reliable)
+    # Check /dev/nvidia* device files with fuser
+    nvidia_devices = glob.glob("/dev/nvidia[0-9]*")
+    if not nvidia_devices:
+        return processes
+    
     try:
         result = subprocess.run(
-            ["nvidia-smi", "--query-compute-apps=pid,process_name", "--format=csv,noheader,nounits"],
+            ["fuser"] + nvidia_devices,
             capture_output=True,
             text=True,
             timeout=5,
         )
-        if result.returncode == 0:
-            for line in result.stdout.strip().split("\n"):
-                if line.strip():
-                    parts = line.split(",", 1)
-                    if len(parts) == 2:
-                        try:
-                            pid = int(parts[0].strip())
-                            name = parts[1].strip()
-                            processes.append((pid, name))
-                        except ValueError:
-                            pass
-            return processes
+        # fuser returns PIDs on stdout
+        if result.stdout.strip():
+            pids = []
+            for pid_str in result.stdout.strip().split():
+                try:
+                    pid = int(pid_str.rstrip(":").strip())
+                    pids.append(pid)
+                except ValueError:
+                    pass
+            
+            # Get process names from /proc
+            for pid in pids:
+                try:
+                    with open(f"/proc/{pid}/comm", "r") as f:
+                        name = f.read().strip()
+                        processes.append((pid, name))
+                except (FileNotFoundError, PermissionError):
+                    processes.append((pid, f"PID {pid}"))
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
-    
-    # Fallback: check /dev/nvidia* device files with fuser
-    nvidia_devices = glob.glob("/dev/nvidia[0-9]*")
-    if nvidia_devices:
-        try:
-            result = subprocess.run(
-                ["fuser"] + nvidia_devices,
-                capture_output=True,
-                text=True,
-                timeout=5,
-            )
-            # fuser returns PIDs on stdout
-            if result.stdout.strip():
-                pids = []
-                for pid_str in result.stdout.strip().split():
-                    try:
-                        pid = int(pid_str.rstrip(":").strip())
-                        pids.append(pid)
-                    except ValueError:
-                        pass
-                
-                # Get process names from /proc
-                for pid in pids:
-                    try:
-                        with open(f"/proc/{pid}/comm", "r") as f:
-                            name = f.read().strip()
-                            processes.append((pid, name))
-                    except (FileNotFoundError, PermissionError):
-                        processes.append((pid, f"PID {pid}"))
-        except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
     
     return processes
 
 
-def unbind_nvidia_driver_if_needed(pci_id: str) -> None:
-    bound_link = f"/sys/bus/pci/drivers/nvidia/{pci_id}"
-    unbind_path = "/sys/bus/pci/drivers/nvidia/unbind"
-    if os.path.exists(bound_link) and os.path.exists(unbind_path):
-        write_file(unbind_path, f"{pci_id}\n")
-
-
-def remove_pci_device_if_possible(pci_id: str) -> None:
+def remove_pci_device(pci_id: str) -> None:
+    """Remove PCI device from the bus."""
     remove_path = f"/sys/bus/pci/devices/{pci_id}/remove"
     if os.path.exists(remove_path):
         write_file(remove_path, "1\n")
     else:
         fail(f"Remove interface not found: {remove_path}")
+
+
+def unload_nvidia_modules() -> None:
+    """Attempt to unload NVIDIA kernel modules."""
+    # Modules to unload in order (dependent modules first)
+    modules = [
+        "nvidia_uvm",
+        "nvidia_drm",
+        "nvidia_modeset",
+        "nvidia",
+    ]
+    
+    for module in modules:
+        try:
+            subprocess.run(
+                ["modprobe", "-r", module],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+        except (FileNotFoundError, subprocess.TimeoutExpired):
+            pass
 
 
 def main() -> None:
@@ -136,8 +131,12 @@ def main() -> None:
             process_list += f" 和其他 {len(processes) - 5} 个进程"
         fail(f"无法弹出 GPU：以下进程正在使用 NVIDIA 显卡：{process_list}")
     
-    unbind_nvidia_driver_if_needed(pci_id)
-    remove_pci_device_if_possible(pci_id)
+    # Remove PCI device directly
+    remove_pci_device(pci_id)
+    
+    # Attempt to unload NVIDIA kernel modules
+    unload_nvidia_modules()
+    
     print(f"Ejected NVIDIA GPU: {pci_id}")
 
 
