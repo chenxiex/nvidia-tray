@@ -3,26 +3,46 @@ revision = 3
 requires-python = ">=3.11"
 
 [[package]]
+name = "dbus-python"
+version = "1.4.0"
+source = { registry = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/" }
+sdist = { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/ff/24/63118050c7dd7be04b1ccd60eab53fef00abe844442e1b6dec92dae505d6/dbus-python-1.4.0.tar.gz", hash = "sha256:991666e498f60dbf3e49b8b7678f5559b8a65034fdf61aae62cdecdb7d89c770", size = 232490, upload-time = "2025-03-13T19:57:54.212Z" }
+
+[[package]]
+name = "notify2"
+version = "0.3.1"
+source = { registry = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple/" }
+sdist = { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/aa/e8/d4b335aa739dc299a77766ecc5f1972d1de1993524aa94acef3219bba315/notify2-0.3.1.tar.gz", hash = "sha256:33fa108d50c42f3cd3407cc437518ad3f6225d1bb237011f16393c9dd3ce197d", size = 17792, upload-time = "2017-04-28T14:03:44.487Z" }
+wheels = [
+    { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/f9/69/99d2bc2d98a802b6f58d1e0a774a933b3fea5ef11455379561b71c04370b/notify2-0.3.1-py2.py3-none-any.whl", hash = "sha256:d7e27e63c2120c074225e526754101e22f029e38e5f002b1ceaa965258bf1073", size = 8033, upload-time = "2017-04-28T14:03:42.934Z" },
+]
+
+[[package]]
 name = "nvidia-tray"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "dbus-python" },
+    { name = "notify2" },
     { name = "pygobject" },
     { name = "pyudev" },
 ]
 
-[package.optional-dependencies]
+[package.dev-dependencies]
 dev = [
     { name = "pygobject-stubs" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "pygobject", specifier = ">=3.42.0" },
-    { name = "pygobject-stubs", marker = "extra == 'dev'", specifier = ">=2.0.0" },
-    { name = "pyudev", specifier = ">=0.24.0" },
+    { name = "dbus-python", specifier = ">=1.4.0" },
+    { name = "notify2", specifier = ">=0.3.1" },
+    { name = "pygobject", specifier = ">=3.56.0" },
+    { name = "pyudev", specifier = ">=0.24.4" },
 ]
-provides-extras = ["dev"]
+
+[package.metadata.requires-dev]
+dev = [{ name = "pygobject-stubs", specifier = ">=2.16.0" }]
 
 [[package]]
 name = "pycairo"

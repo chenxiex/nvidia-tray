@@ -2,10 +2,12 @@
 import os
 import shutil
 import subprocess
+import sys
 import threading
 from typing import List, Optional
 
 import gi
+import notify2
 import pyudev
 
 gi.require_version("Gtk", "3.0")
@@ -44,6 +46,9 @@ def list_nvidia_pci_ids() -> List[str]:
 
 class NvidiaTrayApp:
     def __init__(self) -> None:
+        # Initialize notification system
+        notify2.init("nvidia-tray")
+        
         self.indicator = self._create_indicator()
         self.context = pyudev.Context()
         self.monitor = pyudev.Monitor.from_netlink(self.context)
@@ -143,28 +148,42 @@ class NvidiaTrayApp:
     def _run_eject(self, pci_id: str) -> None:
         helper_path = self._find_helper()
         if not helper_path:
-            GLib.idle_add(self._show_error_dialog, "错误: 找不到 nvidia-eject-helper 程序")
+            self._send_notification(
+                "NVIDIA GPU 操作失败",
+                "错误: 找不到 nvidia-eject-helper 程序",
+                notify2.URGENCY_CRITICAL,
+            )
             return
         
         cmd = ["pkexec", helper_path, pci_id]
         completed = subprocess.run(cmd, capture_output=True, text=True)
         if completed.returncode != 0:
             error = completed.stderr.strip() or completed.stdout.strip() or "未知错误"
-            GLib.idle_add(self._show_error_dialog, f"弹出失败: {error}")
+            self._send_notification(
+                "NVIDIA GPU 操作失败",
+                error,
+                notify2.URGENCY_CRITICAL,
+            )
+        else:
+            # Success: show any output messages (warnings, success info, etc.)
+            message = completed.stdout.strip()
+            if message:
+                self._send_notification(
+                    "NVIDIA GPU 操作完成",
+                    message,
+                    notify2.URGENCY_NORMAL,
+                )
         GLib.idle_add(self.refresh_ui)
 
-    def _show_error_dialog(self, message: str) -> bool:
-        dialog = Gtk.MessageDialog(
-            parent=None,
-            flags=Gtk.DialogFlags.MODAL,
-            message_type=Gtk.MessageType.ERROR,
-            buttons=Gtk.ButtonsType.CLOSE,
-            text="NVIDIA 弹出失败",
-        )
-        dialog.format_secondary_text(message)
-        dialog.run()
-        dialog.destroy()
-        return False
+    def _send_notification(self, title: str, body: str, urgency: int = notify2.URGENCY_NORMAL) -> None:
+        """Send a system desktop notification."""
+        try:
+            notification = notify2.Notification(title, body, icon="video-display")
+            notification.set_urgency(urgency)
+            notification.timeout = 5000 if urgency == notify2.URGENCY_NORMAL else 10000
+            notification.show()
+        except Exception as e:
+            print(f"Warning: Failed to send notification: {e}", file=sys.stderr)
 
     def _on_quit(self, _menu_item: Gtk.MenuItem) -> None:
         Gtk.main_quit()

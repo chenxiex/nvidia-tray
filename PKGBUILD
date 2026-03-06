@@ -12,6 +12,7 @@ depends=(
   'python-gobject'
   'libappindicator'
   'polkit'
+  'python-notify2'
 )
 source=("${pkgname}::git+https://github.com/chenxiex/nvidia-tray.git")
 sha256sums=('SKIP')

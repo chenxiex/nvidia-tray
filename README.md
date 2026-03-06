@@ -19,6 +19,7 @@ Linux 托盘程序：检测 NVIDIA PCI 设备并提供“弹出 NVIDIA GPU”菜
 - `python3-pyudev`
 - `gir1.2-ayatanaappindicator3-0.1` 或 `gir1.2-appindicator3-0.1`
 - `policykit-1`
+- `python3-notify2`
 
 Debian/Ubuntu 可参考：
 

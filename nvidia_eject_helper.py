@@ -91,8 +91,8 @@ def remove_pci_device(pci_id: str) -> None:
         fail(f"Remove interface not found: {remove_path}")
 
 
-def unload_nvidia_modules() -> None:
-    """Attempt to unload NVIDIA kernel modules."""
+def unload_nvidia_modules() -> List[str]:
+    """Attempt to unload NVIDIA kernel modules. Returns list of failed modules (empty if all succeeded)."""
     # Modules to unload in order (dependent modules first)
     modules = [
         "nvidia_uvm",
@@ -101,16 +101,21 @@ def unload_nvidia_modules() -> None:
         "nvidia",
     ]
     
+    failed_modules = []
     for module in modules:
         try:
-            subprocess.run(
+            result = subprocess.run(
                 ["modprobe", "-r", module],
                 capture_output=True,
                 text=True,
                 timeout=5,
             )
+            if result.returncode != 0:
+                failed_modules.append(module)
         except (FileNotFoundError, subprocess.TimeoutExpired):
-            pass
+            failed_modules.append(module)
+    
+    return failed_modules
 
 
 def main() -> None:
@@ -134,10 +139,15 @@ def main() -> None:
     # Remove PCI device directly
     remove_pci_device(pci_id)
     
-    # Attempt to unload NVIDIA kernel modules
-    unload_nvidia_modules()
+    # Attempt to unload NVIDIA kernel modules and check results
+    failed_modules = unload_nvidia_modules()
     
-    print(f"Ejected NVIDIA GPU: {pci_id}")
+    if failed_modules:
+        failed_list = ", ".join(failed_modules)
+        print(f"警告：以下模块卸载失败（可能已在使用）：{failed_list}")
+        print(f"已成功移除 NVIDIA GPU（{pci_id}），但部分内核模块卸载失败。如需完全卸载，请重启系统。")
+    else:
+        print(f"已成功弹出 NVIDIA GPU（{pci_id}）并卸载所有内核模块")
 
 
 if __name__ == "__main__":
