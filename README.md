@@ -27,12 +27,16 @@ Debian/Ubuntu 可参考：
 sudo apt install -y python3-gi python3-pyudev gir1.2-ayatanaappindicator3-0.1 policykit-1
 ```
 
+Arch Linux 可直接使用 PKGBUILD。
+
 ## 安装
 
 ```bash
 cd /path/to/nvidia-tray
 sudo ./install.sh
 ```
+
+Arch Linux 可直接使用 PKGBUILD。
 
 ## 运行
 
