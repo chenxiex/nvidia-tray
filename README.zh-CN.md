@@ -53,6 +53,41 @@ systemctl --user enable --now nvidia-tray.service
 systemctl --user disable --now nvidia-tray.service
 ```
 
+## Hook 命令
+
+可在以下事件执行自定义 bash 命令：
+
+- `gpu_added`：udev 检测到 NVIDIA 显示控制器后
+- `before_eject`：执行 `pkexec nvidia-eject-helper <pci_id>` 前
+- `after_eject`：弹出命令结束后（无论成功或失败）
+
+配置文件路径遵循 XDG Base Directory 规范：
+
+- `$XDG_CONFIG_HOME/nvidia-tray/config.ini`
+- 若未设置 `XDG_CONFIG_HOME`：`~/.config/nvidia-tray/config.ini`
+
+示例配置：
+
+```ini
+[hooks]
+gpu_added = /home/user/.local/bin/nvidia-gpu-added.sh
+before_eject = logger -t nvidia-tray "about to eject $NVIDIA_TRAY_PCI_ID" && /home/user/.local/bin/check-safe.sh
+after_eject = [ "$NVIDIA_TRAY_EJECT_SUCCESS" = "1" ] && notify-send "GPU ejected" "$NVIDIA_TRAY_PCI_ID"
+```
+
+每个 Hook 会收到以下环境变量：
+
+- `NVIDIA_TRAY_EVENT`：`gpu_added`、`before_eject` 或 `after_eject`
+- `NVIDIA_TRAY_PCI_ID`：例如 `0000:01:00.0`
+- `NVIDIA_TRAY_EJECT_SUCCESS`：仅 `after_eject` 有，值为 `1` 或 `0`
+
+说明：
+
+- Hook 配置内容会按 `bash -lc "<你的命令>"` 执行。
+- 直接写脚本路径仍然可用，因为脚本路径本身就是合法 bash 命令。
+- `before_eject` 为阻塞执行，若返回非 0 则中止弹出。
+- `gpu_added` 和 `after_eject` 为异步执行。
+
 ## 说明
 
 - helper 只允许处理格式正确的 PCI ID，并校验设备厂商必须是 NVIDIA。

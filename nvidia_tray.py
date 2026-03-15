@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
+import configparser
+import logging
 import os
 import shutil
 import subprocess
-import sys
 import threading
-from typing import List, Optional
+from dataclasses import dataclass
+from typing import Dict, List, Optional
 
 import gi
 import notify2
@@ -14,6 +16,52 @@ from i18n import _
 
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
+
+
+logger = logging.getLogger("nvidia-tray")
+
+
+@dataclass
+class HookConfig:
+    gpu_added: Optional[str]
+    before_eject: Optional[str]
+    after_eject: Optional[str]
+
+
+def _get_config_path() -> str:
+    xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
+    if not xdg_config_home:
+        xdg_config_home = os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(xdg_config_home, "nvidia-tray", "config.ini")
+
+
+def _load_hook_config() -> HookConfig:
+    config_path = _get_config_path()
+    parser = configparser.ConfigParser()
+    try:
+        with open(config_path, "r", encoding="utf-8") as file:
+            parser.read_file(file)
+    except FileNotFoundError:
+        logger.info("Hook config not found, using defaults: %s", config_path)
+        return HookConfig(gpu_added=None, before_eject=None, after_eject=None)
+    except (OSError, configparser.Error) as exc:
+        logger.warning("Failed to read config file %s: %s", config_path, exc)
+        return HookConfig(gpu_added=None, before_eject=None, after_eject=None)
+
+    hooks = parser["hooks"] if parser.has_section("hooks") else {}
+    loaded = HookConfig(
+        gpu_added=hooks.get("gpu_added") or None,
+        before_eject=hooks.get("before_eject") or None,
+        after_eject=hooks.get("after_eject") or None,
+    )
+    logger.info(
+        "Loaded hook config from %s (gpu_added=%s, before_eject=%s, after_eject=%s)",
+        config_path,
+        bool(loaded.gpu_added),
+        bool(loaded.before_eject),
+        bool(loaded.after_eject),
+    )
+    return loaded
 
 
 def list_nvidia_pci_ids() -> List[str]:
@@ -49,6 +97,7 @@ def list_nvidia_pci_ids() -> List[str]:
 class NvidiaTrayApp:
     def __init__(self) -> None:
         notify2.init("nvidia-tray")
+        self.hooks = _load_hook_config()
         
         self.indicator = self._create_indicator()
         self.context = pyudev.Context()
@@ -64,6 +113,105 @@ class NvidiaTrayApp:
         )
 
         self.refresh_ui()
+
+    def _run_hook(self, hook_command: str, env_extra: Dict[str, str], timeout: int = 60) -> subprocess.CompletedProcess:
+        env = os.environ.copy()
+        env.update(env_extra)
+        logger.info(
+            "Executing hook command event=%s command=%r timeout=%ss",
+            env_extra.get("NVIDIA_TRAY_EVENT", "unknown"),
+            hook_command,
+            timeout,
+        )
+        return subprocess.run(
+            ["bash", "-lc", hook_command],
+            capture_output=True,
+            text=True,
+            env=env,
+            timeout=timeout,
+        )
+
+    def _run_hook_in_thread(self, hook_name: str, hook_command: Optional[str], env_extra: Dict[str, str]) -> None:
+        if not hook_command:
+            return
+
+        def _worker() -> None:
+            try:
+                completed = self._run_hook(hook_command, env_extra)
+            except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
+                logger.error(
+                    "Async hook failed name=%s pci_id=%s error=%s",
+                    hook_name,
+                    env_extra.get("NVIDIA_TRAY_PCI_ID", ""),
+                    exc,
+                )
+                GLib.idle_add(
+                    self._send_notification,
+                    _("Hook execution failed"),
+                    _("%s hook failed: %s") % (hook_name, str(exc)),
+                    notify2.URGENCY_CRITICAL,
+                )
+                return
+
+            if completed.returncode != 0:
+                error = completed.stderr.strip() or completed.stdout.strip() or _("Unknown error")
+                logger.error(
+                    "Async hook exited non-zero name=%s pci_id=%s rc=%s stderr=%s",
+                    hook_name,
+                    env_extra.get("NVIDIA_TRAY_PCI_ID", ""),
+                    completed.returncode,
+                    completed.stderr.strip(),
+                )
+                GLib.idle_add(
+                    self._send_notification,
+                    _("Hook execution failed"),
+                    _("%s hook exited with error: %s") % (hook_name, error),
+                    notify2.URGENCY_CRITICAL,
+                )
+                return
+
+            logger.info(
+                "Async hook completed name=%s pci_id=%s rc=0",
+                hook_name,
+                env_extra.get("NVIDIA_TRAY_PCI_ID", ""),
+            )
+
+        threading.Thread(target=_worker, daemon=True).start()
+
+    def _run_before_eject_hook(self, pci_id: str) -> bool:
+        if not self.hooks.before_eject:
+            return True
+        env_extra = {
+            "NVIDIA_TRAY_EVENT": "before_eject",
+            "NVIDIA_TRAY_PCI_ID": pci_id,
+        }
+        try:
+            completed = self._run_hook(self.hooks.before_eject, env_extra)
+        except (ValueError, OSError, subprocess.TimeoutExpired) as exc:
+            logger.error("before_eject hook failed pci_id=%s error=%s", pci_id, exc)
+            self._send_notification(
+                _("NVIDIA GPU operation failed"),
+                _("before_eject hook failed: %s") % str(exc),
+                notify2.URGENCY_CRITICAL,
+            )
+            return False
+
+        if completed.returncode != 0:
+            error = completed.stderr.strip() or completed.stdout.strip() or _("Unknown error")
+            logger.error(
+                "before_eject hook exited non-zero pci_id=%s rc=%s stderr=%s",
+                pci_id,
+                completed.returncode,
+                completed.stderr.strip(),
+            )
+            self._send_notification(
+                _("NVIDIA GPU operation failed"),
+                _("before_eject hook exited with error: %s") % error,
+                notify2.URGENCY_CRITICAL,
+            )
+            return False
+        logger.info("before_eject hook completed pci_id=%s rc=0", pci_id)
+        return True
 
     def _create_indicator(self):
         try:
@@ -146,6 +294,9 @@ class NvidiaTrayApp:
         return None
 
     def _run_eject(self, pci_id: str) -> None:
+        if not self._run_before_eject_hook(pci_id):
+            return
+
         helper_path = self._find_helper()
         if not helper_path:
             self._send_notification(
@@ -157,6 +308,7 @@ class NvidiaTrayApp:
 
         cmd = ["pkexec", helper_path, pci_id]
         completed = subprocess.run(cmd, capture_output=True, text=True)
+        eject_success = completed.returncode == 0
         if completed.returncode != 0:
             error = completed.stderr.strip() or completed.stdout.strip()
             self._send_notification(
@@ -173,6 +325,16 @@ class NvidiaTrayApp:
                     message,
                     notify2.URGENCY_NORMAL,
                 )
+
+        self._run_hook_in_thread(
+            "after_eject",
+            self.hooks.after_eject,
+            {
+                "NVIDIA_TRAY_EVENT": "after_eject",
+                "NVIDIA_TRAY_PCI_ID": pci_id,
+                "NVIDIA_TRAY_EJECT_SUCCESS": "1" if eject_success else "0",
+            },
+        )
         GLib.idle_add(self.refresh_ui)
 
     def _send_notification(self, title: str, body: str, urgency: int = notify2.URGENCY_NORMAL) -> None:
@@ -183,10 +345,20 @@ class NvidiaTrayApp:
             notification.timeout = 5000 if urgency == notify2.URGENCY_NORMAL else 10000
             notification.show()
         except Exception as e:
-            print(f"Warning: Failed to send notification: {e}", file=sys.stderr)
+            logger.warning("Failed to send notification: %s", e)
 
     def _on_quit(self, _menu_item: Gtk.MenuItem) -> None:
         Gtk.main_quit()
+
+    def _is_nvidia_display_device(self, device: pyudev.Device) -> bool:
+        vendor_raw = device.attributes.get("vendor")
+        class_raw = device.attributes.get("class")
+        if vendor_raw is None or class_raw is None:
+            return False
+
+        vendor = vendor_raw.decode("utf-8", errors="ignore").strip().lower()
+        device_class = class_raw.decode("utf-8", errors="ignore").strip().lower()
+        return vendor == "0x10de" and device_class.startswith("0x03")
 
     def _on_udev_event(self, _source, condition) -> bool:
         if condition & GLib.IO_IN:
@@ -195,6 +367,15 @@ class NvidiaTrayApp:
                 if device is None:
                     break
                 action = device.action
+                if action == "add" and self._is_nvidia_display_device(device):
+                    self._run_hook_in_thread(
+                        "gpu_added",
+                        self.hooks.gpu_added,
+                        {
+                            "NVIDIA_TRAY_EVENT": "gpu_added",
+                            "NVIDIA_TRAY_PCI_ID": device.sys_name,
+                        },
+                    )
                 if action in {"add", "remove", "change", "bind", "unbind"}:
                     self.refresh_ui()
         return True
@@ -208,6 +389,10 @@ class NvidiaTrayApp:
 
 
 def main() -> None:
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s [%(name)s] %(message)s",
+    )
     NvidiaTrayApp()
     Gtk.main()
 

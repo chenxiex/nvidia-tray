@@ -55,6 +55,41 @@ Disable autostart:
 systemctl --user disable --now nvidia-tray.service
 ```
 
+## Hook Commands
+
+You can run custom bash commands for these events:
+
+- `gpu_added`: after an NVIDIA display controller is detected by udev
+- `before_eject`: before `pkexec nvidia-eject-helper <pci_id>` is executed
+- `after_eject`: after eject command finishes (success or failure)
+
+Configuration file path follows the XDG Base Directory spec:
+
+- `$XDG_CONFIG_HOME/nvidia-tray/config.ini`
+- If `XDG_CONFIG_HOME` is unset: `~/.config/nvidia-tray/config.ini`
+
+Example config:
+
+```ini
+[hooks]
+gpu_added = /home/user/.local/bin/nvidia-gpu-added.sh
+before_eject = logger -t nvidia-tray "about to eject $NVIDIA_TRAY_PCI_ID" && /home/user/.local/bin/check-safe.sh
+after_eject = [ "$NVIDIA_TRAY_EJECT_SUCCESS" = "1" ] && notify-send "GPU ejected" "$NVIDIA_TRAY_PCI_ID"
+```
+
+Each hook receives these environment variables:
+
+- `NVIDIA_TRAY_EVENT`: `gpu_added`, `before_eject`, or `after_eject`
+- `NVIDIA_TRAY_PCI_ID`: PCI ID such as `0000:01:00.0`
+- `NVIDIA_TRAY_EJECT_SUCCESS`: only for `after_eject`, value is `1` or `0`
+
+Notes:
+
+- Hook values are executed as `bash -lc "<your command>"`.
+- Script paths are still supported because they are valid bash commands.
+- `before_eject` is blocking. If it exits non-zero, GPU eject is aborted.
+- `gpu_added` and `after_eject` run asynchronously.
+
 ## Notes
 
 - The helper only accepts well-formed PCI IDs and verifies that the device vendor is NVIDIA.
