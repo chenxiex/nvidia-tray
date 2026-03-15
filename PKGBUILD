@@ -25,13 +25,20 @@ pkgver() {
 package() {
   cd "${pkgname}"
   install -Dm755 nvidia_tray.py "${pkgdir}/usr/lib/nvidia-tray/nvidia-tray"
-  
-  # Install additional files
+
   install -Dm755 nvidia_eject_helper.py "${pkgdir}/usr/lib/nvidia-tray/nvidia-eject-helper"
+  install -Dm644 i18n.py "${pkgdir}/usr/lib/nvidia-tray/i18n.py"
   install -Dm644 io.github.anlorsp.nvidia-tray.policy "${pkgdir}/usr/share/polkit-1/actions/io.github.anlorsp.nvidia-tray.policy"
   install -Dm644 nvidia-tray.service "${pkgdir}/usr/lib/systemd/user/nvidia-tray.service"
-  
-  # Create executable wrapper
+
+  # Compile and install locale files
+  for po_file in locales/*/LC_MESSAGES/nvidia-tray.po; do
+    lang=$(basename "$(dirname "$(dirname "$po_file")")")
+    mo_dir="${pkgdir}/usr/share/locale/$lang/LC_MESSAGES"
+    mkdir -p "$mo_dir"
+    msgfmt "$po_file" -o "$mo_dir/nvidia-tray.mo"
+  done
+
   mkdir -p "${pkgdir}/usr/bin"
   ln -s /usr/lib/nvidia-tray/nvidia-tray "${pkgdir}/usr/bin/nvidia-tray"
 }

@@ -10,6 +10,8 @@ import gi
 import notify2
 import pyudev
 
+from i18n import _
+
 gi.require_version("Gtk", "3.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
@@ -32,8 +34,8 @@ def list_nvidia_pci_ids() -> List[str]:
             continue
         if vendor != "0x10de":
             continue
-        
-        # Only include display controllers (class 0x03xxxx), skip audio devices (0x04xxxx)
+
+        # Only include display controllers (class 0x03xxxx), not audio (0x04xxxx)
         try:
             with open(class_path, "r", encoding="utf-8") as file:
                 device_class = file.read().strip().lower()
@@ -46,7 +48,6 @@ def list_nvidia_pci_ids() -> List[str]:
 
 class NvidiaTrayApp:
     def __init__(self) -> None:
-        # Initialize notification system
         notify2.init("nvidia-tray")
         
         self.indicator = self._create_indicator()
@@ -99,18 +100,18 @@ class NvidiaTrayApp:
 
         if pci_ids:
             for pci_id in pci_ids:
-                item = Gtk.MenuItem(label=f"弹出 NVIDIA GPU ({pci_id})")
+                item = Gtk.MenuItem(label=_("Eject NVIDIA GPU (%s)") % pci_id)
                 item.connect("activate", self._on_eject_clicked, pci_id)
                 menu.append(item)
         else:
-            item = Gtk.MenuItem(label="未检测到 NVIDIA GPU")
+            item = Gtk.MenuItem(label=_("No NVIDIA GPU detected"))
             item.set_sensitive(False)
             menu.append(item)
 
         separator = Gtk.SeparatorMenuItem()
         menu.append(separator)
 
-        quit_item = Gtk.MenuItem(label="退出")
+        quit_item = Gtk.MenuItem(label=_("Quit"))
         quit_item.connect("activate", self._on_quit)
         menu.append(quit_item)
 
@@ -121,13 +122,12 @@ class NvidiaTrayApp:
         threading.Thread(target=self._run_eject, args=(pci_id,), daemon=True).start()
 
     def _find_helper(self) -> Optional[str]:
-        """查找 nvidia-eject-helper 程序"""
-        # 1. 在 PATH 中查找
+        # 1. Search in PATH
         helper = shutil.which("nvidia-eject-helper")
         if helper:
             return helper
-        
-        # 2. 检查常见安装位置
+
+        # 2. Check common install locations
         common_paths = [
             "/usr/lib/nvidia-tray/nvidia-eject-helper",
             "/usr/local/lib/nvidia-tray/nvidia-eject-helper",
@@ -137,39 +137,39 @@ class NvidiaTrayApp:
         for path in common_paths:
             if os.path.isfile(path) and os.access(path, os.X_OK):
                 return path
-        
-        # 3. 回退到脚本同目录的开发版本
+
+        # 3. Fall back to development version in script directory
         local_helper = os.path.join(os.path.dirname(os.path.abspath(__file__)), "nvidia_eject_helper.py")
         if os.path.isfile(local_helper):
             return local_helper
-        
+
         return None
 
     def _run_eject(self, pci_id: str) -> None:
         helper_path = self._find_helper()
         if not helper_path:
             self._send_notification(
-                "NVIDIA GPU 操作失败",
-                "错误: 找不到 nvidia-eject-helper 程序",
+                _("NVIDIA GPU operation failed"),
+                _("Error: nvidia-eject-helper not found"),
                 notify2.URGENCY_CRITICAL,
             )
             return
-        
+
         cmd = ["pkexec", helper_path, pci_id]
         completed = subprocess.run(cmd, capture_output=True, text=True)
         if completed.returncode != 0:
-            error = completed.stderr.strip() or completed.stdout.strip() or "未知错误"
+            error = completed.stderr.strip() or completed.stdout.strip()
             self._send_notification(
-                "NVIDIA GPU 操作失败",
+                _("NVIDIA GPU operation failed"),
                 error,
                 notify2.URGENCY_CRITICAL,
             )
         else:
-            # Success: show any output messages (warnings, success info, etc.)
+            # Show output messages from helper (warnings, success info, etc.)
             message = completed.stdout.strip()
             if message:
                 self._send_notification(
-                    "NVIDIA GPU 操作完成",
+                    _("NVIDIA GPU operation completed"),
                     message,
                     notify2.URGENCY_NORMAL,
                 )

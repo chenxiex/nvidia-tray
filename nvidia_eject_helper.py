@@ -6,6 +6,8 @@ import subprocess
 import sys
 from typing import List, Tuple
 
+from i18n import _
+
 PCI_ID_PATTERN = re.compile(r"^[0-9a-fA-F]{4}:[0-9a-fA-F]{2}:[0-9a-fA-F]{2}\.[0-7]$")
 
 
@@ -45,12 +47,11 @@ def ensure_nvidia_device(pci_id: str) -> None:
 def check_nvidia_processes() -> List[Tuple[int, str]]:
     """Check for processes using NVIDIA GPU with fuser. Returns list of (pid, process_name) tuples."""
     processes = []
-    
-    # Check /dev/nvidia* device files with fuser
+
     nvidia_devices = glob.glob("/dev/nvidia[0-9]*")
     if not nvidia_devices:
         return processes
-    
+
     try:
         result = subprocess.run(
             ["fuser"] + nvidia_devices,
@@ -67,8 +68,7 @@ def check_nvidia_processes() -> List[Tuple[int, str]]:
                     pids.append(pid)
                 except ValueError:
                     pass
-            
-            # Get process names from /proc
+
             for pid in pids:
                 try:
                     with open(f"/proc/{pid}/comm", "r") as f:
@@ -78,7 +78,7 @@ def check_nvidia_processes() -> List[Tuple[int, str]]:
                     processes.append((pid, f"PID {pid}"))
     except (FileNotFoundError, subprocess.TimeoutExpired):
         pass
-    
+
     return processes
 
 
@@ -133,21 +133,21 @@ def main() -> None:
     if processes:
         process_list = ", ".join([f"{name} (PID {pid})" for pid, name in processes[:5]])
         if len(processes) > 5:
-            process_list += f" 和其他 {len(processes) - 5} 个进程"
-        fail(f"无法弹出 GPU：以下进程正在使用 NVIDIA 显卡：{process_list}")
-    
+            process_list += ", " + _("and %d more process(es)") % (len(processes) - 5)
+        fail(_("Cannot eject GPU: the following processes are using the NVIDIA card: %s") % process_list)
+
     # Remove PCI device directly
     remove_pci_device(pci_id)
-    
+
     # Attempt to unload NVIDIA kernel modules and check results
     failed_modules = unload_nvidia_modules()
-    
+
     if failed_modules:
         failed_list = ", ".join(failed_modules)
-        print(f"警告：以下模块卸载失败（可能已在使用）：{failed_list}")
-        print(f"已成功移除 NVIDIA GPU（{pci_id}），但部分内核模块卸载失败。如需完全卸载，请重启系统。")
+        print(_("Warning: the following modules failed to unload (may be in use): %s") % failed_list)
+        print(_("NVIDIA GPU (%s) removed, but some kernel modules failed to unload. Reboot to fully unload.") % pci_id)
     else:
-        print(f"已成功弹出 NVIDIA GPU（{pci_id}）并卸载所有内核模块")
+        print(_("NVIDIA GPU (%s) ejected and all kernel modules unloaded successfully") % pci_id)
 
 
 if __name__ == "__main__":

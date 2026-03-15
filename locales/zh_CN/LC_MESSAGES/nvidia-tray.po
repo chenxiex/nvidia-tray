@@ -1,0 +1,47 @@
+# Chinese (Simplified) translation for nvidia-tray
+# This file is distributed under the same license as nvidia-tray.
+msgid ""
+msgstr ""
+"Project-Id-Version: nvidia-tray\n"
+"Report-Msgid-Bugs-To: \n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Language: zh_CN\n"
+"Plural-Forms: nplurals=1; plural=0;\n"
+
+msgid "Eject NVIDIA GPU (%s)"
+msgstr "弹出 NVIDIA GPU (%s)"
+
+msgid "No NVIDIA GPU detected"
+msgstr "未检测到 NVIDIA GPU"
+
+msgid "Quit"
+msgstr "退出"
+
+msgid "NVIDIA GPU operation failed"
+msgstr "NVIDIA GPU 操作失败"
+
+msgid "Error: nvidia-eject-helper not found"
+msgstr "错误：找不到 nvidia-eject-helper 程序"
+
+msgid "NVIDIA GPU operation completed"
+msgstr "NVIDIA GPU 操作完成"
+
+msgid "Cannot eject GPU: the following processes are using the NVIDIA card: %s"
+msgstr "无法弹出 GPU：以下进程正在使用 NVIDIA 显卡：%s"
+
+msgid "and %d more process(es)"
+msgstr "以及另外 %d 个进程"
+
+msgid ""
+"Warning: the following modules failed to unload (may be in use): %s"
+msgstr "警告：以下模块卸载失败（可能已在使用）：%s"
+
+msgid ""
+"NVIDIA GPU (%s) removed, but some kernel modules failed to unload. Reboot "
+"to fully unload."
+msgstr ""
+"已成功移除 NVIDIA GPU（%s），但部分内核模块卸载失败。如需完全卸载，请重启系统。"
+
+msgid "NVIDIA GPU (%s) ejected and all kernel modules unloaded successfully"
+msgstr "已成功弹出 NVIDIA GPU（%s）并卸载所有内核模块"

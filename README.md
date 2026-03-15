@@ -1,70 +1,76 @@
 # nvidia-tray
 
-Linux 托盘程序：检测 NVIDIA PCI 设备并提供“弹出 NVIDIA GPU”菜单项。
+Linux tray application that detects NVIDIA PCI devices and provides an "Eject NVIDIA GPU" menu item.
 
-## 功能
+[中文说明](README.zh-CN.md)
 
-- 自动检测 NVIDIA PCI 设备（厂商 ID: `0x10de`）
-- 仅显示显示控制器设备（PCI class 0x03），过滤音频设备
-- 仅在检测到 NVIDIA 设备时显示托盘图标
-- NVIDIA 设备移除后自动隐藏托盘图标
-- 菜单可对单个 PCI 设备执行弹出（`unbind` + `remove`）
-- **弹出前自动检测占用 GPU 的进程**，如有进程使用则拒绝弹出并显示进程列表
-- 通过 `pkexec` + `polkit` 获取授权
+## Features
 
-## 依赖
+- Automatically detects NVIDIA PCI devices (vendor ID: `0x10de`)
+- Only shows display controllers (PCI class `0x03`), filters out audio devices
+- Tray icon is only shown when an NVIDIA device is present
+- Tray icon is automatically hidden after the NVIDIA device is removed
+- Menu item to eject (unbind + remove) individual PCI devices
+- **Checks for processes using the GPU before ejecting** — refuses to eject and lists offending processes if any are found
+- Authorizes privileged operations via `pkexec` + `polkit`
+
+## Dependencies
 
 - Python 3
 - `python3-gi`
 - `python3-pyudev`
-- `gir1.2-ayatanaappindicator3-0.1` 或 `gir1.2-appindicator3-0.1`
+- `gir1.2-ayatanaappindicator3-0.1` or `gir1.2-appindicator3-0.1`
 - `policykit-1`
 - `python3-notify2`
+- `gettext` (for locale file compilation, build-time only)
 
-Debian/Ubuntu 可参考：
+Arch Linux: use the provided PKGBUILD.
 
-```bash
-sudo apt install -y python3-gi python3-pyudev gir1.2-ayatanaappindicator3-0.1 policykit-1
-```
-
-Arch Linux 可直接使用 PKGBUILD。
-
-## 安装
+## Installation
 
 ```bash
 cd /path/to/nvidia-tray
 sudo ./install.sh
 ```
 
-Arch Linux 可直接使用 PKGBUILD。
+Arch Linux: use the provided PKGBUILD.
 
-## 运行
+## Usage
 
-手动运行：
+Run manually:
 
 ```bash
 nvidia-tray
 ```
 
-启用开机自启动（推荐）：
+Enable autostart (recommended):
 
 ```bash
 systemctl --user enable --now nvidia-tray.service
 ```
 
-停止并禁用自启动：
+Disable autostart:
 
 ```bash
 systemctl --user disable --now nvidia-tray.service
 ```
 
-## 说明
+## Notes
 
-- helper 只允许处理格式正确的 PCI ID，并校验设备厂商必须是 NVIDIA。
-- **弹出前会检查是否有进程正在使用 GPU**：
-  - 使用 `fuser` 检测打开 `/dev/nvidia*` 设备的进程
-  - 如检测到进程占用，将拒绝弹出并显示进程名称和 PID
-- **弹出流程**：
-  - 直接写入 PCI 设备的 `remove` 接口移除设备
-  - 尝试卸载 NVIDIA 内核模块（nvidia_uvm, nvidia_drm, nvidia_modeset, nvidia）
-- 默认 polkit 策略为管理员认证（活跃会话可缓存认证）。
+- The helper only accepts well-formed PCI IDs and verifies that the device vendor is NVIDIA.
+- **GPU usage is checked before ejecting**:
+  - Uses `fuser` to detect processes with open `/dev/nvidia*` device files
+  - If any processes are found, ejection is refused and their names and PIDs are shown
+- **Eject procedure**:
+  - Writes to the PCI device's `remove` sysfs interface to remove the device from the bus
+  - Attempts to unload NVIDIA kernel modules (`nvidia_uvm`, `nvidia_drm`, `nvidia_modeset`, `nvidia`)
+- The default polkit policy requires administrator authentication (cached for active sessions).
+
+## Localization
+
+Translations are stored as gettext `.po` files under `locales/`. Compiled `.mo` files are included in the repository.
+
+To add a new language:
+1. Create `locales/<lang>/LC_MESSAGES/nvidia-tray.po` based on the existing `zh_CN` file
+2. Compile: `msgfmt locales/<lang>/LC_MESSAGES/nvidia-tray.po -o locales/<lang>/LC_MESSAGES/nvidia-tray.mo`
+3. Update `install.sh` and `PKGBUILD` to install the new locale file
