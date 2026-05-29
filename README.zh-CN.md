@@ -10,7 +10,7 @@ Linux 托盘程序：检测 NVIDIA PCI 设备并提供“弹出 NVIDIA GPU”菜
 - NVIDIA 设备移除后自动隐藏托盘图标
 - 菜单可将 NVIDIA GPU 从 PCI 总线上弹出
 - **弹出前自动检测占用目标 GPU 的进程**，如有进程使用则拒绝弹出并显示进程与设备路径
-- 提供“强制弹出”菜单项和 helper `--force` 选项，可跳过 GPU 进程占用检查
+- 支持配置进程白名单：白名单进程占用 GPU 时只在通知中警告，不阻碍弹出
 - 默认同时移除同一 PCI slot 下的 NVIDIA 关联 function，例如 HDMI 音频、USB xHCI、UCSI function
 - 通过 `pkexec` + `polkit` 获取授权
 
@@ -88,13 +88,13 @@ after_eject = [ "$NVTRAY_EJECT_SUCCESS" = "1" ] && notify-send "GPU ejected" "$N
 unload_modules = false
 wait_seconds = 5
 remove_related_functions = true
+process_whitelist = ["steam", "gamescope"]
 ```
 
 每个 Hook 会收到以下环境变量：
 
 - `NVTRAY_EVENT`：`gpu_added`、`before_eject` 或 `after_eject`
 - `NVTRAY_PCI_ID`：例如 `0000:01:00.0`
-- `NVTRAY_EJECT_FORCE`：仅 `after_eject` 有，强制弹出为 `1`，普通弹出为 `0`
 - `NVTRAY_EJECT_SUCCESS`：仅 `after_eject` 有，值为 `1` 或 `0`
 
 说明：
@@ -109,6 +109,7 @@ remove_related_functions = true
 - `unload_modules`：设为 `true` 时，helper 会在移除 PCI 设备后尝试卸载 NVIDIA 内核模块。默认禁用，仅建议作为最后手段或调试选项，因为卸载模块可能影响其它 NVIDIA GPU，也可能影响 Vulkan/Wine/DXVK 用户态状态。
 - `wait_seconds`：移除后等待 PCI function 和 DRM 节点消失的秒数。默认值：`5`。
 - `remove_related_functions`：设为 `true` 时，helper 会移除所选显示控制器同一 slot 下的所有 NVIDIA PCI function。默认值：`true`。
+- `process_whitelist`：允许占用 GPU 但不阻碍弹出的进程名。若只检测到白名单进程，nvtray 会在通知中警告并继续弹出。支持 JSON 字符串数组，也支持逗号或换行分隔的进程名。
 
 ## 说明
 
@@ -117,7 +118,7 @@ remove_related_functions = true
   - 扫描进程文件描述符，检查目标卡对应的 `/dev/dri/card*`、`/dev/dri/renderD*` 和 DRM sysfs 节点
   - 仅当 `eject.unload_modules = true` 时，额外检查 `/dev/nvidiactl` 等 NVIDIA 驱动节点
   - 如检测到进程占用，将拒绝弹出并显示进程名称、PID 和设备路径
-  - 使用托盘中的“强制弹出”或 `nvtray-eject-helper --force <pci_id>` 可跳过该检查
+  - 若占用进程在 `eject.process_whitelist` 中，则不阻碍弹出，只在通知中警告
 - **弹出流程**：
   - 弹出前将所选显示控制器的 runtime power control 设为 `on`
   - 先移除同一 slot 下的 NVIDIA 关联 function，再移除显示控制器

@@ -1,4 +1,5 @@
 import configparser
+import json
 import logging
 import os
 import shutil
@@ -31,6 +32,7 @@ class AppConfig:
     unload_modules: bool = False
     wait_seconds: int = 5
     remove_related_functions: bool = True
+    process_whitelist: Optional[List[str]] = None
 
 
 def _get_config_path() -> str:
@@ -38,6 +40,23 @@ def _get_config_path() -> str:
     if not xdg_config_home:
         xdg_config_home = os.path.join(os.path.expanduser("~"), ".config")
     return os.path.join(xdg_config_home, "nvtray", "config.ini")
+
+
+def _parse_process_whitelist(raw: str) -> List[str]:
+    raw = raw.strip()
+    if not raw:
+        return []
+
+    if raw.startswith("["):
+        parsed = json.loads(raw)
+        if not isinstance(parsed, list) or not all(isinstance(item, str) for item in parsed):
+            raise ValueError("process_whitelist must be an array of strings")
+        return [item.strip() for item in parsed if item.strip()]
+
+    names: List[str] = []
+    for line in raw.splitlines():
+        names.extend(item.strip() for item in line.split(","))
+    return [name for name in names if name]
 
 
 def _load_config() -> AppConfig:
@@ -71,6 +90,13 @@ def _load_config() -> AppConfig:
     except ValueError as exc:
         logger.warning("Invalid eject.remove_related_functions value in %s: %s", config_path, exc)
         remove_related_functions = True
+    try:
+        process_whitelist = _parse_process_whitelist(
+            parser.get("eject", "process_whitelist", fallback="")
+        )
+    except (ValueError, json.JSONDecodeError) as exc:
+        logger.warning("Invalid eject.process_whitelist value in %s: %s", config_path, exc)
+        process_whitelist = []
 
     loaded = AppConfig(
         gpu_added=hooks.get("gpu_added") or None,
@@ -79,9 +105,10 @@ def _load_config() -> AppConfig:
         unload_modules=unload_modules,
         wait_seconds=wait_seconds,
         remove_related_functions=remove_related_functions,
+        process_whitelist=process_whitelist,
     )
     logger.info(
-        "Loaded config from %s (gpu_added=%s, before_eject=%s, after_eject=%s, unload_modules=%s, wait_seconds=%s, remove_related_functions=%s)",
+        "Loaded config from %s (gpu_added=%s, before_eject=%s, after_eject=%s, unload_modules=%s, wait_seconds=%s, remove_related_functions=%s, process_whitelist=%s)",
         config_path,
         bool(loaded.gpu_added),
         bool(loaded.before_eject),
@@ -89,6 +116,7 @@ def _load_config() -> AppConfig:
         loaded.unload_modules,
         loaded.wait_seconds,
         loaded.remove_related_functions,
+        loaded.process_whitelist,
     )
     return loaded
 
@@ -278,11 +306,8 @@ class NvTrayApp:
         if pci_ids:
             for pci_id in pci_ids:
                 item = Gtk.MenuItem(label=_("Eject NVIDIA GPU (%s)") % pci_id)
-                item.connect("activate", self._on_eject_clicked, pci_id, False)
+                item.connect("activate", self._on_eject_clicked, pci_id)
                 menu.append(item)
-                force_item = Gtk.MenuItem(label=_("Force eject NVIDIA GPU (%s)") % pci_id)
-                force_item.connect("activate", self._on_eject_clicked, pci_id, True)
-                menu.append(force_item)
         else:
             item = Gtk.MenuItem(label=_("No NVIDIA GPU detected"))
             item.set_sensitive(False)
@@ -298,8 +323,8 @@ class NvTrayApp:
         menu.show_all()
         return menu
 
-    def _on_eject_clicked(self, _menu_item: Gtk.MenuItem, pci_id: str, force: bool) -> None:
-        threading.Thread(target=self._run_eject, args=(pci_id, force), daemon=True).start()
+    def _on_eject_clicked(self, _menu_item: Gtk.MenuItem, pci_id: str) -> None:
+        threading.Thread(target=self._run_eject, args=(pci_id,), daemon=True).start()
 
     def _find_helper(self) -> Optional[str]:
         # 1. Search in PATH
@@ -325,7 +350,7 @@ class NvTrayApp:
 
         return None
 
-    def _run_eject(self, pci_id: str, force: bool = False) -> None:
+    def _run_eject(self, pci_id: str) -> None:
         if not self._run_before_eject_hook(pci_id):
             return
 
@@ -341,11 +366,11 @@ class NvTrayApp:
         cmd = ["pkexec", helper_path]
         if self.config.unload_modules:
             cmd.append("--unload-modules")
-        if force:
-            cmd.append("--force")
         cmd.extend(["--wait-seconds", str(self.config.wait_seconds)])
         if not self.config.remove_related_functions:
             cmd.append("--keep-related-functions")
+        for process_name in self.config.process_whitelist or []:
+            cmd.extend(["--process-whitelist", process_name])
         cmd.append(pci_id)
         completed = subprocess.run(cmd, capture_output=True, text=True)
         eject_success = completed.returncode == 0
@@ -372,7 +397,6 @@ class NvTrayApp:
             {
                 "NVTRAY_EVENT": "after_eject",
                 "NVTRAY_PCI_ID": pci_id,
-                "NVTRAY_EJECT_FORCE": "1" if force else "0",
                 "NVTRAY_EJECT_SUCCESS": "1" if eject_success else "0",
             },
         )

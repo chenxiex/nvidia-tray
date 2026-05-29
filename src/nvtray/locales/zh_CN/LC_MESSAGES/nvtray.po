@@ -12,9 +12,6 @@ msgstr ""
 msgid "Eject NVIDIA GPU (%s)"
 msgstr "弹出 NVIDIA GPU (%s)"
 
-msgid "Force eject NVIDIA GPU (%s)"
-msgstr "强制弹出 NVIDIA GPU (%s)"
-
 msgid "No NVIDIA GPU detected"
 msgstr "未检测到 NVIDIA GPU"
 
@@ -35,6 +32,9 @@ msgstr "无法弹出 GPU：以下进程正在使用 NVIDIA 显卡：%s"
 
 msgid "and %d more process(es)"
 msgstr "以及另外 %d 个进程"
+
+msgid "Warning: whitelisted processes are using the NVIDIA card: %s"
+msgstr "警告：以下白名单进程正在使用 NVIDIA 显卡：%s"
 
 msgid ""
 "Warning: the following modules failed to unload (may be in use): %s"

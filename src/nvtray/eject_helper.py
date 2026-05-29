@@ -30,9 +30,9 @@ class DeviceHandle:
 class EjectOptions:
     pci_id: str
     unload_modules: bool
-    force: bool
     wait_seconds: float
     remove_related_functions: bool
+    process_whitelist: Tuple[str, ...]
 
 
 def fail(message: str, code: int = 1) -> None:
@@ -252,6 +252,16 @@ def format_device_handles(handles: List[DeviceHandle]) -> str:
     return ", ".join(entries)
 
 
+def split_process_handles(
+    handles: List[DeviceHandle],
+    whitelist: Iterable[str],
+) -> Tuple[List[DeviceHandle], List[DeviceHandle]]:
+    whitelist_set = {name for name in whitelist if name}
+    allowed = [handle for handle in handles if handle.name in whitelist_set]
+    blocked = [handle for handle in handles if handle.name not in whitelist_set]
+    return blocked, allowed
+
+
 def set_power_control_on(pci_id: str) -> None:
     power_control_path = os.path.join(device_dir(pci_id), "power", "control")
     if os.path.exists(power_control_path):
@@ -331,16 +341,18 @@ def parse_args() -> EjectOptions:
         description="Eject an NVIDIA GPU from the PCI bus.",
     )
     parser.add_argument("--unload-modules", action="store_true")
-    parser.add_argument(
-        "--force",
-        action="store_true",
-        help="Remove the GPU even when processes are using NVIDIA device nodes.",
-    )
     parser.add_argument("--wait-seconds", type=float, default=5.0)
     parser.add_argument(
         "--keep-related-functions",
         action="store_true",
         help="Only remove the requested PCI function instead of the whole NVIDIA slot.",
+    )
+    parser.add_argument(
+        "--process-whitelist",
+        action="append",
+        default=[],
+        metavar="NAME",
+        help="Allow this process name to use the GPU without blocking removal.",
     )
     parser.add_argument("pci_id")
     args = parser.parse_args()
@@ -351,9 +363,9 @@ def parse_args() -> EjectOptions:
     return EjectOptions(
         pci_id=validate_pci_id(args.pci_id),
         unload_modules=args.unload_modules,
-        force=args.force,
         wait_seconds=args.wait_seconds,
         remove_related_functions=not args.keep_related_functions,
+        process_whitelist=tuple(name.strip() for name in args.process_whitelist if name.strip()),
     )
 
 
@@ -368,17 +380,25 @@ def main() -> None:
     pci_ids = related_nvidia_functions(options.pci_id, options.remove_related_functions)
     drm_names = drm_device_names_for_pci(options.pci_id)
 
-    if not options.force:
-        # Check for running processes using the target GPU before removing it.
-        processes = check_nvidia_processes(
-            options.pci_id,
-            include_driver_nodes=options.unload_modules,
+    # Check for running processes using the target GPU before removing it.
+    processes = check_nvidia_processes(
+        options.pci_id,
+        include_driver_nodes=options.unload_modules,
+    )
+    blocked_processes, whitelisted_processes = split_process_handles(
+        processes,
+        options.process_whitelist,
+    )
+    if blocked_processes:
+        fail(
+            _("Cannot eject GPU: the following processes are using the NVIDIA card: %s")
+            % format_device_handles(blocked_processes)
         )
-        if processes:
-            fail(
-                _("Cannot eject GPU: the following processes are using the NVIDIA card: %s")
-                % format_device_handles(processes)
-            )
+    if whitelisted_processes:
+        print(
+            _("Warning: whitelisted processes are using the NVIDIA card: %s")
+            % format_device_handles(whitelisted_processes)
+        )
 
     set_power_control_on(options.pci_id)
 

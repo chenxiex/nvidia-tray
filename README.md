@@ -12,7 +12,7 @@ Linux tray application that detects NVIDIA PCI devices and provides an "Eject NV
 - Tray icon is automatically hidden after the NVIDIA device is removed
 - Menu item to eject an NVIDIA GPU from the PCI bus
 - **Checks for processes using the target GPU before ejecting** — refuses to eject and lists offending processes and device paths if any are found
-- Force-eject menu item and helper `--force` option to skip the GPU process check
+- Configurable process whitelist for GPU usage warnings that should not block ejection
 - Removes related NVIDIA PCI functions on the same slot by default, such as HDMI audio, USB xHCI, and UCSI functions
 - Authorizes privileged operations via `pkexec` + `polkit`
 
@@ -90,13 +90,13 @@ after_eject = [ "$NVTRAY_EJECT_SUCCESS" = "1" ] && notify-send "GPU ejected" "$N
 unload_modules = false
 wait_seconds = 5
 remove_related_functions = true
+process_whitelist = ["steam", "gamescope"]
 ```
 
 Each hook receives these environment variables:
 
 - `NVTRAY_EVENT`: `gpu_added`, `before_eject`, or `after_eject`
 - `NVTRAY_PCI_ID`: PCI ID such as `0000:01:00.0`
-- `NVTRAY_EJECT_FORCE`: only for `after_eject`, value is `1` for force eject or `0` for normal eject
 - `NVTRAY_EJECT_SUCCESS`: only for `after_eject`, value is `1` or `0`
 
 Notes:
@@ -111,6 +111,7 @@ Eject options:
 - `unload_modules`: when set to `true`, the helper attempts to unload NVIDIA kernel modules after removing the PCI device. This is disabled by default and is intended as a last-resort/debug option because unloading modules can affect other NVIDIA GPUs and user-space Vulkan/Wine/DXVK state.
 - `wait_seconds`: seconds to wait for the removed PCI functions and DRM nodes to disappear. Default: `5`.
 - `remove_related_functions`: when set to `true`, the helper removes all NVIDIA PCI functions on the same slot as the selected display controller. Default: `true`.
+- `process_whitelist`: process names that may keep using the GPU without blocking ejection. If only whitelisted processes are found, nvtray warns in the notification and still ejects. Accepts a JSON string array, or comma/newline-separated names.
 
 ## Notes
 
@@ -119,7 +120,7 @@ Eject options:
   - Scans process file descriptors for the target card's `/dev/dri/card*`, `/dev/dri/renderD*`, and DRM sysfs nodes
   - When `eject.unload_modules = true`, also checks NVIDIA driver nodes such as `/dev/nvidiactl`
   - If any processes are found, ejection is refused and their names, PIDs, and device paths are shown
-  - Use the tray's force-eject item or `nvtray-eject-helper --force <pci_id>` to skip this check
+  - Processes listed in `eject.process_whitelist` do not block ejection; they are reported as warnings in the notification
 - **Eject procedure**:
   - Sets the selected display controller's runtime power control to `on` before removal
   - Removes related NVIDIA PCI functions on the same slot first, then removes the display controller
