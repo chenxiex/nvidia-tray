@@ -12,6 +12,7 @@ Linux tray application that detects NVIDIA PCI devices and provides an "Eject NV
 - Tray icon is automatically hidden after the NVIDIA device is removed
 - Menu item to eject an NVIDIA GPU from the PCI bus
 - **Checks for processes using the target GPU before ejecting** — refuses to eject and lists offending processes and device paths if any are found
+- Force-eject menu item and helper `--force` option to skip the GPU process check
 - Removes related NVIDIA PCI functions on the same slot by default, such as HDMI audio, USB xHCI, and UCSI functions
 - Authorizes privileged operations via `pkexec` + `polkit`
 
@@ -95,6 +96,7 @@ Each hook receives these environment variables:
 
 - `NVTRAY_EVENT`: `gpu_added`, `before_eject`, or `after_eject`
 - `NVTRAY_PCI_ID`: PCI ID such as `0000:01:00.0`
+- `NVTRAY_EJECT_FORCE`: only for `after_eject`, value is `1` for force eject or `0` for normal eject
 - `NVTRAY_EJECT_SUCCESS`: only for `after_eject`, value is `1` or `0`
 
 Notes:
@@ -116,6 +118,7 @@ Eject options:
 - **GPU usage is checked before ejecting**:
   - Scans process file descriptors for the target card's `/dev/dri/card*`, `/dev/dri/renderD*`, NVIDIA device nodes, and DRM sysfs nodes
   - If any processes are found, ejection is refused and their names, PIDs, and device paths are shown
+  - Use the tray's force-eject item or `nvtray-eject-helper --force <pci_id>` to skip this check
 - **Eject procedure**:
   - Sets the selected display controller's runtime power control to `on` before removal
   - Removes related NVIDIA PCI functions on the same slot first, then removes the display controller

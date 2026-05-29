@@ -278,8 +278,11 @@ class NvTrayApp:
         if pci_ids:
             for pci_id in pci_ids:
                 item = Gtk.MenuItem(label=_("Eject NVIDIA GPU (%s)") % pci_id)
-                item.connect("activate", self._on_eject_clicked, pci_id)
+                item.connect("activate", self._on_eject_clicked, pci_id, False)
                 menu.append(item)
+                force_item = Gtk.MenuItem(label=_("Force eject NVIDIA GPU (%s)") % pci_id)
+                force_item.connect("activate", self._on_eject_clicked, pci_id, True)
+                menu.append(force_item)
         else:
             item = Gtk.MenuItem(label=_("No NVIDIA GPU detected"))
             item.set_sensitive(False)
@@ -295,8 +298,8 @@ class NvTrayApp:
         menu.show_all()
         return menu
 
-    def _on_eject_clicked(self, _menu_item: Gtk.MenuItem, pci_id: str) -> None:
-        threading.Thread(target=self._run_eject, args=(pci_id,), daemon=True).start()
+    def _on_eject_clicked(self, _menu_item: Gtk.MenuItem, pci_id: str, force: bool) -> None:
+        threading.Thread(target=self._run_eject, args=(pci_id, force), daemon=True).start()
 
     def _find_helper(self) -> Optional[str]:
         # 1. Search in PATH
@@ -322,7 +325,7 @@ class NvTrayApp:
 
         return None
 
-    def _run_eject(self, pci_id: str) -> None:
+    def _run_eject(self, pci_id: str, force: bool = False) -> None:
         if not self._run_before_eject_hook(pci_id):
             return
 
@@ -338,6 +341,8 @@ class NvTrayApp:
         cmd = ["pkexec", helper_path]
         if self.config.unload_modules:
             cmd.append("--unload-modules")
+        if force:
+            cmd.append("--force")
         cmd.extend(["--wait-seconds", str(self.config.wait_seconds)])
         if not self.config.remove_related_functions:
             cmd.append("--keep-related-functions")
@@ -367,6 +372,7 @@ class NvTrayApp:
             {
                 "NVTRAY_EVENT": "after_eject",
                 "NVTRAY_PCI_ID": pci_id,
+                "NVTRAY_EJECT_FORCE": "1" if force else "0",
                 "NVTRAY_EJECT_SUCCESS": "1" if eject_success else "0",
             },
         )

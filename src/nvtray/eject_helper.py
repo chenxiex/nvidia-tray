@@ -30,6 +30,7 @@ class DeviceHandle:
 class EjectOptions:
     pci_id: str
     unload_modules: bool
+    force: bool
     wait_seconds: float
     remove_related_functions: bool
 
@@ -325,6 +326,11 @@ def parse_args() -> EjectOptions:
         description="Eject an NVIDIA GPU from the PCI bus.",
     )
     parser.add_argument("--unload-modules", action="store_true")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Remove the GPU even when processes are using NVIDIA device nodes.",
+    )
     parser.add_argument("--wait-seconds", type=float, default=5.0)
     parser.add_argument(
         "--keep-related-functions",
@@ -340,6 +346,7 @@ def parse_args() -> EjectOptions:
     return EjectOptions(
         pci_id=validate_pci_id(args.pci_id),
         unload_modules=args.unload_modules,
+        force=args.force,
         wait_seconds=args.wait_seconds,
         remove_related_functions=not args.keep_related_functions,
     )
@@ -356,13 +363,14 @@ def main() -> None:
     pci_ids = related_nvidia_functions(options.pci_id, options.remove_related_functions)
     drm_names = drm_device_names_for_pci(options.pci_id)
 
-    # Check for running processes using the target GPU before removing it.
-    processes = check_nvidia_processes(options.pci_id)
-    if processes:
-        fail(
-            _("Cannot eject GPU: the following processes are using the NVIDIA card: %s")
-            % format_device_handles(processes)
-        )
+    if not options.force:
+        # Check for running processes using the target GPU before removing it.
+        processes = check_nvidia_processes(options.pci_id)
+        if processes:
+            fail(
+                _("Cannot eject GPU: the following processes are using the NVIDIA card: %s")
+                % format_device_handles(processes)
+            )
 
     set_power_control_on(options.pci_id)
 

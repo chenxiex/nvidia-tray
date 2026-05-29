@@ -12,6 +12,9 @@ msgstr ""
 msgid "Eject NVIDIA GPU (%s)"
 msgstr "弹出 NVIDIA GPU (%s)"
 
+msgid "Force eject NVIDIA GPU (%s)"
+msgstr "强制弹出 NVIDIA GPU (%s)"
+
 msgid "No NVIDIA GPU detected"
 msgstr "未检测到 NVIDIA GPU"
 

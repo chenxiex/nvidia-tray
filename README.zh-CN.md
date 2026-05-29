@@ -10,6 +10,7 @@ Linux 托盘程序：检测 NVIDIA PCI 设备并提供“弹出 NVIDIA GPU”菜
 - NVIDIA 设备移除后自动隐藏托盘图标
 - 菜单可将 NVIDIA GPU 从 PCI 总线上弹出
 - **弹出前自动检测占用目标 GPU 的进程**，如有进程使用则拒绝弹出并显示进程与设备路径
+- 提供“强制弹出”菜单项和 helper `--force` 选项，可跳过 GPU 进程占用检查
 - 默认同时移除同一 PCI slot 下的 NVIDIA 关联 function，例如 HDMI 音频、USB xHCI、UCSI function
 - 通过 `pkexec` + `polkit` 获取授权
 
@@ -93,6 +94,7 @@ remove_related_functions = true
 
 - `NVTRAY_EVENT`：`gpu_added`、`before_eject` 或 `after_eject`
 - `NVTRAY_PCI_ID`：例如 `0000:01:00.0`
+- `NVTRAY_EJECT_FORCE`：仅 `after_eject` 有，强制弹出为 `1`，普通弹出为 `0`
 - `NVTRAY_EJECT_SUCCESS`：仅 `after_eject` 有，值为 `1` 或 `0`
 
 说明：
@@ -114,6 +116,7 @@ remove_related_functions = true
 - **弹出前会检查是否有进程正在使用 GPU**：
   - 扫描进程文件描述符，检查目标卡对应的 `/dev/dri/card*`、`/dev/dri/renderD*`、NVIDIA 设备节点和 DRM sysfs 节点
   - 如检测到进程占用，将拒绝弹出并显示进程名称、PID 和设备路径
+  - 使用托盘中的“强制弹出”或 `nvtray-eject-helper --force <pci_id>` 可跳过该检查
 - **弹出流程**：
   - 弹出前将所选显示控制器的 runtime power control 设为 `on`
   - 先移除同一 slot 下的 NVIDIA 关联 function，再移除显示控制器
