@@ -116,7 +116,8 @@ Eject options:
 
 - The helper only accepts well-formed PCI IDs and verifies that the device vendor is NVIDIA.
 - **GPU usage is checked before ejecting**:
-  - Scans process file descriptors for the target card's `/dev/dri/card*`, `/dev/dri/renderD*`, NVIDIA device nodes, and DRM sysfs nodes
+  - Scans process file descriptors for the target card's `/dev/dri/card*`, `/dev/dri/renderD*`, and DRM sysfs nodes
+  - When `eject.unload_modules = true`, also checks NVIDIA driver nodes such as `/dev/nvidiactl`
   - If any processes are found, ejection is refused and their names, PIDs, and device paths are shown
   - Use the tray's force-eject item or `nvtray-eject-helper --force <pci_id>` to skip this check
 - **Eject procedure**:

@@ -232,9 +232,14 @@ def check_open_regular_paths(paths: Iterable[str]) -> List[DeviceHandle]:
     return sorted(handles, key=lambda item: (item.path, item.pid, item.name))
 
 
-def check_nvidia_processes(pci_id: str) -> List[DeviceHandle]:
+def check_nvidia_processes(
+    pci_id: str,
+    include_driver_nodes: bool = False,
+) -> List[DeviceHandle]:
     """Check for processes that keep the target GPU device nodes open."""
-    watched_paths = drm_paths_for_pci(pci_id) + nvidia_device_paths_for_pci(pci_id)
+    watched_paths = drm_paths_for_pci(pci_id)
+    if include_driver_nodes:
+        watched_paths.extend(nvidia_device_paths_for_pci(pci_id))
     handles = check_open_device_handles(watched_paths)
     handles.extend(check_open_regular_paths(drm_sysfs_paths_for_pci(pci_id)))
     return sorted(set(handles), key=lambda item: (item.path, item.pid, item.name))
@@ -365,7 +370,10 @@ def main() -> None:
 
     if not options.force:
         # Check for running processes using the target GPU before removing it.
-        processes = check_nvidia_processes(options.pci_id)
+        processes = check_nvidia_processes(
+            options.pci_id,
+            include_driver_nodes=options.unload_modules,
+        )
         if processes:
             fail(
                 _("Cannot eject GPU: the following processes are using the NVIDIA card: %s")

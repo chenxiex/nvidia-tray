@@ -114,7 +114,8 @@ remove_related_functions = true
 
 - helper 只允许处理格式正确的 PCI ID，并校验设备厂商必须是 NVIDIA。
 - **弹出前会检查是否有进程正在使用 GPU**：
-  - 扫描进程文件描述符，检查目标卡对应的 `/dev/dri/card*`、`/dev/dri/renderD*`、NVIDIA 设备节点和 DRM sysfs 节点
+  - 扫描进程文件描述符，检查目标卡对应的 `/dev/dri/card*`、`/dev/dri/renderD*` 和 DRM sysfs 节点
+  - 仅当 `eject.unload_modules = true` 时，额外检查 `/dev/nvidiactl` 等 NVIDIA 驱动节点
   - 如检测到进程占用，将拒绝弹出并显示进程名称、PID 和设备路径
   - 使用托盘中的“强制弹出”或 `nvtray-eject-helper --force <pci_id>` 可跳过该检查
 - **弹出流程**：
