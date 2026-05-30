@@ -56,13 +56,15 @@ nvtray
 Enable autostart (recommended):
 
 ```bash
-systemctl --user enable --now nvtray.service
+mkdir -p ~/.config/autostart
+cp /usr/share/applications/nvtray.desktop ~/.config/autostart/
+nvtray &
 ```
 
 Disable autostart:
 
 ```bash
-systemctl --user disable --now nvtray.service
+rm -f ~/.config/autostart/nvtray.desktop
 ```
 
 ## Hook Commands

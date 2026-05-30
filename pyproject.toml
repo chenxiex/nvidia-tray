@@ -31,7 +31,7 @@ nvtray = ["locales/*/LC_MESSAGES/*.mo", "locales/*/LC_MESSAGES/*.po"]
 
 [tool.setuptools.data-files]
 "share/polkit-1/actions" = ["io.github.chenxiex.nvtray.policy"]
-"lib/systemd/user" = ["nvtray.service"]
+"share/applications" = ["nvtray.desktop"]
 "share/locale/zh_CN/LC_MESSAGES" = ["src/nvtray/locales/zh_CN/LC_MESSAGES/nvtray.mo"]
 
 [dependency-groups]

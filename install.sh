@@ -64,10 +64,12 @@ install_nvtray() {
     echo "  /usr/bin/nvtray-eject-helper"
     echo "Installed integration files:"
     echo "  /usr/share/polkit-1/actions/io.github.chenxiex.nvtray.policy"
-    echo "  /usr/lib/systemd/user/nvtray.service"
+    echo "  /usr/share/applications/nvtray.desktop"
     echo ""
     echo "To enable autostart:"
-    echo "  systemctl --user enable --now nvtray.service"
+    echo "  mkdir -p ~/.config/autostart"
+    echo "  cp /usr/share/applications/nvtray.desktop ~/.config/autostart/"
+    echo "  nvtray &"
 }
 
 remove_nvtray() {
@@ -143,7 +145,7 @@ PY
 
     echo ""
     echo "If autostart was enabled for the current user, you can disable it with:"
-    echo "  systemctl --user disable --now nvtray.service"
+    echo "  rm -f ~/.config/autostart/nvtray.desktop"
 }
 
 remove=false

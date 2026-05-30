@@ -1,0 +1,9 @@
+[Desktop Entry]
+Type=Application
+Name=nvtray
+Comment=NVIDIA GPU tray indicator
+Exec=nvtray
+Terminal=false
+NoDisplay=false
+Categories=Utility;HardwareSettings;
+StartupNotify=false

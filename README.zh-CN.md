@@ -54,13 +54,15 @@ nvtray
 启用开机自启动（推荐）：
 
 ```bash
-systemctl --user enable --now nvtray.service
+mkdir -p ~/.config/autostart
+cp /usr/share/applications/nvtray.desktop ~/.config/autostart/
+nvtray &
 ```
 
 停止并禁用自启动：
 
 ```bash
-systemctl --user disable --now nvtray.service
+rm -f ~/.config/autostart/nvtray.desktop
 ```
 
 ## Hook 命令
