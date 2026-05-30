@@ -27,6 +27,14 @@ msgstr "错误：找不到 nvtray-eject-helper 程序"
 msgid "NVIDIA GPU operation completed"
 msgstr "NVIDIA GPU 操作完成"
 
+msgid "nvtray config migration required"
+msgstr "nvtray 配置需要迁移"
+
+msgid ""
+"Legacy INI config found at %s. nvtray now reads config.json; please migrate "
+"your configuration."
+msgstr "检测到旧 INI 配置：%s。nvtray 现在读取 config.json，请迁移你的配置。"
+
 msgid "Cannot eject GPU: the following processes are using the NVIDIA card: %s"
 msgstr "无法弹出 GPU：以下进程正在使用 NVIDIA 显卡：%s"
 

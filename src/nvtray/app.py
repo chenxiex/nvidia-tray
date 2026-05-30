@@ -1,4 +1,3 @@
-import configparser
 import json
 import logging
 import os
@@ -6,7 +5,7 @@ import shutil
 import subprocess
 import threading
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import gi
 import notify2
@@ -24,84 +23,158 @@ from gi.repository import GLib, Gtk  # noqa: E402
 logger = logging.getLogger("nvtray")
 
 
+@dataclass(frozen=True)
+class ProcessWhitelistRule:
+    name: str
+    path: str
+
+
 @dataclass
 class AppConfig:
     gpu_added: Optional[str]
     before_eject: Optional[str]
     after_eject: Optional[str]
     unload_modules: bool = False
-    wait_seconds: int = 5
+    wait_seconds: float = 5.0
     remove_related_functions: bool = True
-    process_whitelist: Optional[List[str]] = None
+    process_whitelist: Optional[List[ProcessWhitelistRule]] = None
+    legacy_config_path: Optional[str] = None
 
 
 def _get_config_path() -> str:
     xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
     if not xdg_config_home:
         xdg_config_home = os.path.join(os.path.expanduser("~"), ".config")
+    return os.path.join(xdg_config_home, "nvtray", "config.json")
+
+
+def _get_legacy_config_path() -> str:
+    xdg_config_home = os.environ.get("XDG_CONFIG_HOME")
+    if not xdg_config_home:
+        xdg_config_home = os.path.join(os.path.expanduser("~"), ".config")
     return os.path.join(xdg_config_home, "nvtray", "config.ini")
 
 
-def _parse_process_whitelist(raw: str) -> List[str]:
-    raw = raw.strip()
-    if not raw:
+def _default_config(legacy_config_path: Optional[str] = None) -> AppConfig:
+    return AppConfig(
+        gpu_added=None,
+        before_eject=None,
+        after_eject=None,
+        legacy_config_path=legacy_config_path,
+    )
+
+
+def _optional_str(value: Any) -> Optional[str]:
+    if isinstance(value, str) and value:
+        return value
+    return None
+
+
+def _bool_value(value: Any, default: bool) -> bool:
+    return value if isinstance(value, bool) else default
+
+
+def _non_negative_float(value: Any, default: float) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return default
+    if value < 0:
+        return default
+    return float(value)
+
+
+def _parse_process_whitelist_object(item: Dict[str, Any]) -> List[ProcessWhitelistRule]:
+    if not isinstance(item, dict):
+        raise ValueError("process_whitelist object entries must be objects")
+
+    name = item.get("name", item.get("process"))
+    if not isinstance(name, str) or not name.strip():
+        raise ValueError("process_whitelist object entries must include a process name")
+
+    paths = item.get("paths", item.get("path", "*"))
+    if isinstance(paths, str):
+        path_values = [paths]
+    elif isinstance(paths, list) and all(isinstance(path, str) for path in paths):
+        path_values = paths
+    else:
+        raise ValueError("process_whitelist object entries must include path or paths")
+
+    path_values = [path.strip() for path in path_values if path.strip()]
+    if not path_values:
+        raise ValueError("process_whitelist object entries must include at least one path")
+
+    return [
+        ProcessWhitelistRule(name=name.strip(), path=path)
+        for path in path_values
+    ]
+
+
+def _parse_process_whitelist(raw: Any) -> List[ProcessWhitelistRule]:
+    if raw is None:
         return []
 
-    if raw.startswith("["):
-        parsed = json.loads(raw)
-        if not isinstance(parsed, list) or not all(isinstance(item, str) for item in parsed):
-            raise ValueError("process_whitelist must be an array of strings")
-        return [item.strip() for item in parsed if item.strip()]
+    if not isinstance(raw, list):
+        raise ValueError("process_whitelist must be an array")
 
-    names: List[str] = []
-    for line in raw.splitlines():
-        names.extend(item.strip() for item in line.split(","))
-    return [name for name in names if name]
+    rules: List[ProcessWhitelistRule] = []
+    for item in raw:
+        if isinstance(item, str):
+            if item.strip():
+                rules.append(ProcessWhitelistRule(name=item.strip(), path="*"))
+        elif isinstance(item, dict):
+            rules.extend(_parse_process_whitelist_object(item))
+        else:
+            raise ValueError("process_whitelist entries must be strings or objects")
+    return rules
 
 
 def _load_config() -> AppConfig:
     config_path = _get_config_path()
-    parser = configparser.ConfigParser()
+    legacy_config_path = _get_legacy_config_path()
     try:
         with open(config_path, "r", encoding="utf-8") as file:
-            parser.read_file(file)
+            raw_config = json.load(file)
     except FileNotFoundError:
+        if os.path.exists(legacy_config_path):
+            logger.warning(
+                "Legacy INI config found but JSON config is missing: %s",
+                legacy_config_path,
+            )
+            return _default_config(legacy_config_path=legacy_config_path)
         logger.info("Config not found, using defaults: %s", config_path)
-        return AppConfig(gpu_added=None, before_eject=None, after_eject=None)
-    except (OSError, configparser.Error) as exc:
+        return _default_config()
+    except (OSError, json.JSONDecodeError) as exc:
         logger.warning("Failed to read config file %s: %s", config_path, exc)
-        return AppConfig(gpu_added=None, before_eject=None, after_eject=None)
+        return _default_config()
 
-    hooks = parser["hooks"] if parser.has_section("hooks") else {}
-    try:
-        unload_modules = parser.getboolean("eject", "unload_modules", fallback=False)
-    except ValueError as exc:
-        logger.warning("Invalid eject.unload_modules value in %s: %s", config_path, exc)
-        unload_modules = False
-    try:
-        wait_seconds = parser.getint("eject", "wait_seconds", fallback=5)
-        if wait_seconds < 0:
-            raise ValueError("wait_seconds must be greater than or equal to 0")
-    except ValueError as exc:
-        logger.warning("Invalid eject.wait_seconds value in %s: %s", config_path, exc)
-        wait_seconds = 5
-    try:
-        remove_related_functions = parser.getboolean("eject", "remove_related_functions", fallback=True)
-    except ValueError as exc:
-        logger.warning("Invalid eject.remove_related_functions value in %s: %s", config_path, exc)
-        remove_related_functions = True
+    if not isinstance(raw_config, dict):
+        logger.warning("Invalid config file %s: root value must be an object", config_path)
+        return _default_config()
+
+    hooks = raw_config.get("hooks", {})
+    if not isinstance(hooks, dict):
+        logger.warning("Invalid hooks section in %s: expected object", config_path)
+        hooks = {}
+
+    eject = raw_config.get("eject", {})
+    if not isinstance(eject, dict):
+        logger.warning("Invalid eject section in %s: expected object", config_path)
+        eject = {}
+
+    unload_modules = _bool_value(eject.get("unload_modules"), False)
+    wait_seconds = _non_negative_float(eject.get("wait_seconds"), 5.0)
+    remove_related_functions = _bool_value(eject.get("remove_related_functions"), True)
     try:
         process_whitelist = _parse_process_whitelist(
-            parser.get("eject", "process_whitelist", fallback="")
+            eject.get("process_whitelist")
         )
-    except (ValueError, json.JSONDecodeError) as exc:
+    except ValueError as exc:
         logger.warning("Invalid eject.process_whitelist value in %s: %s", config_path, exc)
         process_whitelist = []
 
     loaded = AppConfig(
-        gpu_added=hooks.get("gpu_added") or None,
-        before_eject=hooks.get("before_eject") or None,
-        after_eject=hooks.get("after_eject") or None,
+        gpu_added=_optional_str(hooks.get("gpu_added")),
+        before_eject=_optional_str(hooks.get("before_eject")),
+        after_eject=_optional_str(hooks.get("after_eject")),
         unload_modules=unload_modules,
         wait_seconds=wait_seconds,
         remove_related_functions=remove_related_functions,
@@ -170,6 +243,16 @@ class NvTrayApp:
         )
 
         self.refresh_ui()
+        if self.config.legacy_config_path:
+            self._send_notification(
+                _("nvtray config migration required"),
+                _(
+                    "Legacy INI config found at %s. nvtray now reads config.json; "
+                    "please migrate your configuration."
+                )
+                % self.config.legacy_config_path,
+                notify2.URGENCY_NORMAL,
+            )
 
     def _run_hook(self, hook_command: str, env_extra: Dict[str, str], timeout: int = 60) -> subprocess.CompletedProcess:
         env = os.environ.copy()
@@ -369,8 +452,8 @@ class NvTrayApp:
         cmd.extend(["--wait-seconds", str(self.config.wait_seconds)])
         if not self.config.remove_related_functions:
             cmd.append("--keep-related-functions")
-        for process_name in self.config.process_whitelist or []:
-            cmd.extend(["--process-whitelist", process_name])
+        for rule in self.config.process_whitelist or []:
+            cmd.extend(["--process-whitelist", f"{rule.name}={rule.path}"])
         cmd.append(pci_id)
         completed = subprocess.run(cmd, capture_output=True, text=True)
         eject_success = completed.returncode == 0

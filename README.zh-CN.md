@@ -73,22 +73,30 @@ systemctl --user disable --now nvtray.service
 
 配置文件路径遵循 XDG Base Directory 规范：
 
-- `$XDG_CONFIG_HOME/nvtray/config.ini`
-- 若未设置 `XDG_CONFIG_HOME`：`~/.config/nvtray/config.ini`
+- `$XDG_CONFIG_HOME/nvtray/config.json`
+- 若未设置 `XDG_CONFIG_HOME`：`~/.config/nvtray/config.json`
+
+旧版本的 INI 配置不再读取。若存在 `config.ini` 但不存在 `config.json`，nvtray 会使用默认配置启动，并显示迁移警告通知。
 
 示例配置：
 
-```ini
-[hooks]
-gpu_added = /home/user/.local/bin/nvidia-gpu-added.sh
-before_eject = logger -t nvtray "about to eject $NVTRAY_PCI_ID" && /home/user/.local/bin/check-safe.sh
-after_eject = [ "$NVTRAY_EJECT_SUCCESS" = "1" ] && notify-send "GPU ejected" "$NVTRAY_PCI_ID"
-
-[eject]
-unload_modules = false
-wait_seconds = 5
-remove_related_functions = true
-process_whitelist = ["steam", "gamescope"]
+```json
+{
+  "hooks": {
+    "gpu_added": "/home/user/.local/bin/nvidia-gpu-added.sh",
+    "before_eject": "logger -t nvtray \"about to eject $NVTRAY_PCI_ID\" && /home/user/.local/bin/check-safe.sh",
+    "after_eject": "[ \"$NVTRAY_EJECT_SUCCESS\" = \"1\" ] && notify-send \"GPU ejected\" \"$NVTRAY_PCI_ID\""
+  },
+  "eject": {
+    "unload_modules": false,
+    "wait_seconds": 5,
+    "remove_related_functions": true,
+    "process_whitelist": [
+      "steam",
+      {"name": "gamescope", "path": "/dev/dri/renderD*"}
+    ]
+  }
+}
 ```
 
 每个 Hook 会收到以下环境变量：
@@ -109,7 +117,7 @@ process_whitelist = ["steam", "gamescope"]
 - `unload_modules`：设为 `true` 时，helper 会在移除 PCI 设备后尝试卸载 NVIDIA 内核模块。默认禁用，仅建议作为最后手段或调试选项，因为卸载模块可能影响其它 NVIDIA GPU，也可能影响 Vulkan/Wine/DXVK 用户态状态。
 - `wait_seconds`：移除后等待 PCI function 和 DRM 节点消失的秒数。默认值：`5`。
 - `remove_related_functions`：设为 `true` 时，helper 会移除所选显示控制器同一 slot 下的所有 NVIDIA PCI function。默认值：`true`。
-- `process_whitelist`：允许占用 GPU 但不阻碍弹出的进程名。若只检测到白名单进程，nvtray 会在通知中警告并继续弹出。支持 JSON 字符串数组，也支持逗号或换行分隔的进程名。
+- `process_whitelist`：允许占用 GPU 但不阻碍弹出的进程/路径模式 JSON 数组。字符串项如 `"steam"` 会视为 `"steam=*"`，表示该进程可占用任意被检测到的 GPU 路径；对象项如 `{"name": "gamescope", "path": "/dev/dri/renderD*"}` 更严格，仅允许匹配的进程/路径组合。`name` 和 `path` 都支持 `*`、`?` 等 shell 风格通配符。
 
 ## 说明
 
@@ -118,7 +126,7 @@ process_whitelist = ["steam", "gamescope"]
   - 扫描进程文件描述符，检查目标卡对应的 `/dev/dri/card*`、`/dev/dri/renderD*` 和 DRM sysfs 节点
   - 仅当 `eject.unload_modules = true` 时，额外检查 `/dev/nvidiactl` 等 NVIDIA 驱动节点
   - 如检测到进程占用，将拒绝弹出并显示进程名称、PID 和设备路径
-  - 若占用进程在 `eject.process_whitelist` 中，则不阻碍弹出，只在通知中警告
+  - 若占用进程匹配 `eject.process_whitelist`，则不阻碍弹出。未指定路径的项会视为 `path=*`；更严格的项只允许匹配的进程/路径组合。允许项会在通知中警告
 - **弹出流程**：
   - 弹出前将所选显示控制器的 runtime power control 设为 `on`
   - 先移除同一 slot 下的 NVIDIA 关联 function，再移除显示控制器

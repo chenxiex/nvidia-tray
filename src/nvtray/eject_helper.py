@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import argparse
+import fnmatch
 import glob
 import os
 import re
@@ -27,12 +28,18 @@ class DeviceHandle:
 
 
 @dataclass(frozen=True)
+class ProcessWhitelistRule:
+    name: str
+    path: str
+
+
+@dataclass(frozen=True)
 class EjectOptions:
     pci_id: str
     unload_modules: bool
     wait_seconds: float
     remove_related_functions: bool
-    process_whitelist: Tuple[str, ...]
+    process_whitelist: Tuple[ProcessWhitelistRule, ...]
 
 
 def fail(message: str, code: int = 1) -> None:
@@ -254,12 +261,40 @@ def format_device_handles(handles: List[DeviceHandle]) -> str:
 
 def split_process_handles(
     handles: List[DeviceHandle],
-    whitelist: Iterable[str],
+    whitelist: Iterable[ProcessWhitelistRule],
 ) -> Tuple[List[DeviceHandle], List[DeviceHandle]]:
-    whitelist_set = {name for name in whitelist if name}
-    allowed = [handle for handle in handles if handle.name in whitelist_set]
-    blocked = [handle for handle in handles if handle.name not in whitelist_set]
+    whitelist_rules = [
+        rule
+        for rule in whitelist
+        if rule.name and rule.path
+    ]
+
+    def is_allowed(handle: DeviceHandle) -> bool:
+        return any(
+            fnmatch.fnmatchcase(handle.name, rule.name)
+            and fnmatch.fnmatchcase(handle.path, rule.path)
+            for rule in whitelist_rules
+        )
+
+    blocked: List[DeviceHandle] = []
+    allowed: List[DeviceHandle] = []
+    for handle in handles:
+        if is_allowed(handle):
+            allowed.append(handle)
+        else:
+            blocked.append(handle)
     return blocked, allowed
+
+
+def parse_process_whitelist_rule(item: str) -> ProcessWhitelistRule:
+    if "=" in item:
+        name, path = (part.strip() for part in item.split("=", 1))
+    else:
+        name = item.strip()
+        path = "*"
+    if not name or not path:
+        fail("--process-whitelist entries must use NAME or NAME=PATH")
+    return ProcessWhitelistRule(name=name, path=path)
 
 
 def set_power_control_on(pci_id: str) -> None:
@@ -351,8 +386,8 @@ def parse_args() -> EjectOptions:
         "--process-whitelist",
         action="append",
         default=[],
-        metavar="NAME",
-        help="Allow this process name to use the GPU without blocking removal.",
+        metavar="NAME[=PATH]",
+        help="Allow process/path patterns to use the GPU without blocking removal.",
     )
     parser.add_argument("pci_id")
     args = parser.parse_args()
@@ -365,7 +400,11 @@ def parse_args() -> EjectOptions:
         unload_modules=args.unload_modules,
         wait_seconds=args.wait_seconds,
         remove_related_functions=not args.keep_related_functions,
-        process_whitelist=tuple(name.strip() for name in args.process_whitelist if name.strip()),
+        process_whitelist=tuple(
+            parse_process_whitelist_rule(item)
+            for item in args.process_whitelist
+            if item.strip()
+        ),
     )
 
 

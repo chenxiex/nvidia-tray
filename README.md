@@ -75,22 +75,30 @@ You can run custom bash commands for these events:
 
 Configuration file path follows the XDG Base Directory spec:
 
-- `$XDG_CONFIG_HOME/nvtray/config.ini`
-- If `XDG_CONFIG_HOME` is unset: `~/.config/nvtray/config.ini`
+- `$XDG_CONFIG_HOME/nvtray/config.json`
+- If `XDG_CONFIG_HOME` is unset: `~/.config/nvtray/config.json`
+
+INI configs from older nvtray versions are no longer read. If `config.ini` exists but `config.json` does not, nvtray starts with defaults and shows a migration warning notification.
 
 Example config:
 
-```ini
-[hooks]
-gpu_added = /home/user/.local/bin/nvidia-gpu-added.sh
-before_eject = logger -t nvtray "about to eject $NVTRAY_PCI_ID" && /home/user/.local/bin/check-safe.sh
-after_eject = [ "$NVTRAY_EJECT_SUCCESS" = "1" ] && notify-send "GPU ejected" "$NVTRAY_PCI_ID"
-
-[eject]
-unload_modules = false
-wait_seconds = 5
-remove_related_functions = true
-process_whitelist = ["steam", "gamescope"]
+```json
+{
+  "hooks": {
+    "gpu_added": "/home/user/.local/bin/nvidia-gpu-added.sh",
+    "before_eject": "logger -t nvtray \"about to eject $NVTRAY_PCI_ID\" && /home/user/.local/bin/check-safe.sh",
+    "after_eject": "[ \"$NVTRAY_EJECT_SUCCESS\" = \"1\" ] && notify-send \"GPU ejected\" \"$NVTRAY_PCI_ID\""
+  },
+  "eject": {
+    "unload_modules": false,
+    "wait_seconds": 5,
+    "remove_related_functions": true,
+    "process_whitelist": [
+      "steam",
+      {"name": "gamescope", "path": "/dev/dri/renderD*"}
+    ]
+  }
+}
 ```
 
 Each hook receives these environment variables:
@@ -111,7 +119,7 @@ Eject options:
 - `unload_modules`: when set to `true`, the helper attempts to unload NVIDIA kernel modules after removing the PCI device. This is disabled by default and is intended as a last-resort/debug option because unloading modules can affect other NVIDIA GPUs and user-space Vulkan/Wine/DXVK state.
 - `wait_seconds`: seconds to wait for the removed PCI functions and DRM nodes to disappear. Default: `5`.
 - `remove_related_functions`: when set to `true`, the helper removes all NVIDIA PCI functions on the same slot as the selected display controller. Default: `true`.
-- `process_whitelist`: process names that may keep using the GPU without blocking ejection. If only whitelisted processes are found, nvtray warns in the notification and still ejects. Accepts a JSON string array, or comma/newline-separated names.
+- `process_whitelist`: JSON array of process/path patterns that may keep using the GPU without blocking ejection. String entries such as `"steam"` are treated as `"steam=*"` and allow that process on any detected GPU path. Object entries such as `{"name": "gamescope", "path": "/dev/dri/renderD*"}` are stricter and only allow matching process/path pairs. Both `name` and `path` support shell-style wildcards such as `*` and `?`.
 
 ## Notes
 
@@ -120,7 +128,7 @@ Eject options:
   - Scans process file descriptors for the target card's `/dev/dri/card*`, `/dev/dri/renderD*`, and DRM sysfs nodes
   - When `eject.unload_modules = true`, also checks NVIDIA driver nodes such as `/dev/nvidiactl`
   - If any processes are found, ejection is refused and their names, PIDs, and device paths are shown
-  - Processes listed in `eject.process_whitelist` do not block ejection; they are reported as warnings in the notification
+  - Matching entries in `eject.process_whitelist` do not block ejection. Entries without a path are treated as `path=*`; stricter entries only allow matching process/path pairs. Allowed processes are reported as warnings in the notification
 - **Eject procedure**:
   - Sets the selected display controller's runtime power control to `on` before removal
   - Removes related NVIDIA PCI functions on the same slot first, then removes the display controller
